@@ -17,7 +17,9 @@
 */
 
 #include <cstddef>
-#include <iostream>
+#include <array>
+#include <functional>
+#include <sstream>
 
 #include "bitboard.h"
 #include "evaluate.h"
@@ -29,7 +31,43 @@
 #include "types.h"
 #include "uci.h"
 
+#include "kvm_api.hpp"
+namespace Stockfish {
+	std::function<void(std::stringstream&)> search_complete;
+}
 using namespace Stockfish;
+
+static void on_get(const char *commands, const char *config)
+{
+	(void)config;
+
+    search_complete = [] (std::stringstream& ss) {
+		Backend::response(200, "text/plain", ss.str());
+	};
+
+	printf("Commands: %s\n", commands);
+	fflush(stdout);
+	char * arguments[] = {"stockfish", (char *)commands};
+
+	UCI::loop(sizeof(arguments) / sizeof(arguments[0]), arguments);
+
+    Threads.set(0);
+}
+static void
+on_post(const char *, const char *,
+	const char *content_type, const uint8_t* data, const size_t len)
+{
+    search_complete = [] (std::stringstream& ss) {
+		Backend::response(200, "text/plain", ss.str());
+	};
+
+	std::string commands {(const char *)data, len};
+	char * arguments[] = {"stockfish", commands.data()};
+
+	UCI::loop(sizeof(arguments) / sizeof(arguments[0]), arguments);
+
+    Threads.set(0);
+}
 
 int main(int argc, char* argv[]) {
 
@@ -44,8 +82,30 @@ int main(int argc, char* argv[]) {
   Search::clear(); // After threads are up
   Eval::NNUE::init();
 
-  UCI::loop(argc, argv);
+  if (IS_LINUX_MAIN())
+  {
+	/* Command-line test */
+    search_complete = [] (std::stringstream& ss) {
+		std::string result(ss.str());
+    	printf("%s", result.c_str());
+	};
 
-  Threads.set(0);
-  return 0;
+    std::array<char *, 3> arguments = {
+      "stockfish",
+	  "position startpos moves e2e4\n",
+	  "go movetime 1000\n"
+    };
+
+    UCI::loop(arguments.size(), arguments.data());
+
+    Threads.set(0);
+    return 0;
+  }
+  else
+  {
+	/* Compute callback */
+    set_backend_get(on_get);
+    set_backend_post(on_post);
+    wait_for_requests();
+  }
 }

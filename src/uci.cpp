@@ -247,21 +247,23 @@ void UCI::loop(int argc, char* argv[]) {
 
   pos.set(StartFEN, false, &states->back(), Threads.main());
 
-  for (int i = 1; i < argc; ++i)
+  for (int i = 1; i < argc; ++i) {
+      printf("Command: %s", argv[i]);
       cmd += std::string(argv[i]) + " ";
+  }
+  fflush(stdout);
+  std::istringstream cmdstream(cmd);
 
   do {
-      if (argc == 1 && !getline(std::cin, cmd)) // Wait for an input or an end-of-file (EOF) indication
-          cmd = "quit";
+	  if (!std::getline(cmdstream, cmd)) // Get a full line of commands
+	  	break;
 
       std::istringstream is(cmd);
+	  token.clear();
+      is >> std::skipws >> token; // Get first token
 
-      token.clear(); // Avoid a stale if getline() returns nothing or a blank line
-      is >> std::skipws >> token;
-
-      if (    token == "quit"
-          ||  token == "stop")
-          Threads.stop = true;
+      if (token.empty())
+	  	return;
 
       // The GUI sends 'ponderhit' to tell that the user has played the expected move.
       // So, 'ponderhit' is sent if pondering was done on the same move that the user
@@ -304,9 +306,9 @@ void UCI::loop(int argc, char* argv[]) {
                        "\nFor any further information, visit https://github.com/official-stockfish/Stockfish#readme"
                        "\nor read the corresponding README.md and Copying.txt files distributed along with this program.\n" << sync_endl;
       else if (!token.empty() && token[0] != '#')
-          sync_cout << "Unknown command: '" << cmd << "'. Type help for more information." << sync_endl;
+          sync_cout << "Unknown command: '" << token << "'. Type help for more information." << sync_endl;
 
-  } while (token != "quit" && argc == 1); // The command-line arguments are one-shot
+  } while (!token.empty()); // The command-line arguments are one-shot
 }
 
 
